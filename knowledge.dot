@@ -1,0 +1,15 @@
+digraph ProjectKnowledge {
+  // Architectural patterns and project rules
+  
+  error_handling [type="doc", level="p1", status="todo", description="Error handling patterns and exception management standards"];
+  
+  api_standards [type="doc", level="p1", status="todo", description="REST API design standards and conventions"];
+  
+  test_coverage [type="doc", level="p0", status="todo", description="Test coverage requirements and testing standards"];
+  
+  code_style [type="doc", level="p1", status="todo", description="Code style guidelines and formatting conventions"];
+  
+  logging_standards [type="doc", level="p1", status="todo", description="Logging patterns, levels, and structured logging standards"];
+  
+  security_headers [type="doc", level="p0", status="todo", description="Security header requirements and HTTP security standards"];
+}
