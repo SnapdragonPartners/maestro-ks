@@ -1,0 +1,29 @@
+digraph ProjectKnowledge {
+    // Graph settings
+    node [shape=box, style=filled, fillcolor=lightblue];
+    
+    // Go architectural patterns and standards
+    go_code_style [
+        type="pattern",
+        level="critical",
+        status="active",
+        description="Go code formatting and style standards: Use gofmt for all code formatting. Follow standard Go naming conventions (camelCase for unexported, PascalCase for exported). Package names should be lowercase, single-word when possible. Organize imports in standard library, external, and internal groups."
+    ];
+    
+    go_logging [
+        type="pattern",
+        level="high",
+        status="active",
+        description="Structured logging standards: Use structured logging with key-value pairs for better observability. Include context information (request IDs, user IDs) in log entries. Use appropriate log levels (DEBUG, INFO, WARN, ERROR). Avoid logging sensitive information (passwords, tokens, PII)."
+    ];
+    
+    go_error_handling [
+        type="pattern",
+        level="critical",
+        status="active",
+        description="Error handling patterns: Always check and handle errors explicitly. Use error wrapping with fmt.Errorf and %w verb to preserve error chains. Create custom error types for domain-specific errors. Return errors rather than panicking except in truly exceptional cases. Use errors.Is and errors.As for error type checking."
+    ];
+    
+    // Relationships between patterns
+    go_error_handling -> go_logging [label="errors should be logged"];
+}
