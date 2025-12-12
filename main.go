@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"flag"
 	"fmt"
 	"log"
@@ -11,6 +12,9 @@ import (
 	"syscall"
 	"time"
 )
+
+//go:embed home.html
+var homeHTML string
 
 // responseWriter wraps http.ResponseWriter to capture status code
 type responseWriter struct {
@@ -50,12 +54,41 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// homeHandler serves the embedded HTML home page
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(homeHTML))
+}
+
+// healthHandler serves the health check endpoint
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
 // setupRoutes configures the HTTP routes
 func setupRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Catch-all handler that returns 404 for all routes
+	// Register specific routes first
+	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Handle exact root path match
+		if r.URL.Path == "/" {
+			homeHandler(w, r)
+			return
+		}
+		// All other paths return 404
 		http.NotFound(w, r)
 	})
 
