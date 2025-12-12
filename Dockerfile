@@ -1,5 +1,5 @@
 # Go Development Environment with Node.js and Claude Code CLI
-FROM golang:latest
+FROM golang:1.24
 
 # Install system dependencies
 RUN apt-get update && \
