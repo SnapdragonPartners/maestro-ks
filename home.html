@@ -3,10 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hello World</title>
+    <title>Astrology Quiz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        h1 {
+            color: #1976d2;
+            margin-bottom: 20px;
+        }
+        .description {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+        .actions {
+            margin-top: 30px;
+        }
+        button {
+            background-color: #1976d2;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+        .secondary-button {
+            background-color: #757575;
+        }
+        .secondary-button:hover {
+            background-color: #616161;
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello World</h1>
-    <p>Welcome to the Hello World application!</p>
+    <h1>Astrology Quiz</h1>
+    <p class="description">Test your knowledge of astrology with our trivia quiz!</p>
+
+    <div class="actions">
+        <a href="/quiz"><button>Start Quiz</button></a>
+        <a href="/leaderboard"><button class="secondary-button">View Leaderboard</button></a>
+    </div>
 </body>
 </html>

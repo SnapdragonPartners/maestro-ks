@@ -24,7 +24,7 @@ func TestHomeHandler(t *testing.T) {
 			name:           "GET / success",
 			method:         http.MethodGet,
 			expectedStatus: http.StatusOK,
-			expectedBody:   "Hello World",
+			expectedBody:   "Astrology Quiz",
 			checkHeader:    true,
 		},
 		{
@@ -161,7 +161,7 @@ func TestSetupRoutes(t *testing.T) {
 			method:         http.MethodGet,
 			path:           "/",
 			expectedStatus: http.StatusOK,
-			bodyContains:   "Hello World",
+			bodyContains:   "Astrology Quiz",
 		},
 		{
 			name:           "GET /health",
@@ -529,7 +529,7 @@ func TestServerStartupShutdown(t *testing.T) {
 			name:           "root path returns HTML",
 			path:           "/",
 			expectedStatus: http.StatusOK,
-			bodyContains:   "Hello World",
+			bodyContains:   "Astrology Quiz",
 		},
 		{
 			name:           "health endpoint returns OK",
