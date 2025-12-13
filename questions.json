@@ -1,0 +1,86 @@
+[
+  {
+    "id": "q1",
+    "question": "What element is associated with Aries, Leo, and Sagittarius?",
+    "choices": ["Fire", "Earth", "Air", "Water"],
+    "answer_index": 0,
+    "explanation": "Aries, Leo, and Sagittarius are the three Fire signs, known for their passion, energy, and enthusiasm."
+  },
+  {
+    "id": "q2",
+    "question": "Which planet rules the zodiac sign Cancer?",
+    "choices": ["Mars", "Venus", "Moon", "Mercury"],
+    "answer_index": 2,
+    "explanation": "The Moon rules Cancer, reflecting the sign's emotional depth, intuition, and nurturing qualities."
+  },
+  {
+    "id": "q3",
+    "question": "How many houses are there in a traditional astrological birth chart?",
+    "choices": ["10", "11", "12", "13"],
+    "answer_index": 2,
+    "explanation": "There are 12 houses in an astrological birth chart, each representing different areas of life."
+  },
+  {
+    "id": "q4",
+    "question": "What is the symbol for Aquarius?",
+    "choices": ["The Fish", "The Water Bearer", "The Scales", "The Twins"],
+    "answer_index": 1,
+    "explanation": "Aquarius is symbolized by the Water Bearer, despite being an Air sign, representing the giving of life and spiritual food."
+  },
+  {
+    "id": "q5",
+    "question": "Which aspect occurs when two planets are 180 degrees apart?",
+    "choices": ["Conjunction", "Trine", "Opposition", "Square"],
+    "answer_index": 2,
+    "explanation": "An opposition occurs when two planets are 180 degrees apart, creating tension and the need for balance."
+  },
+  {
+    "id": "q6",
+    "question": "What zodiac sign is the Sun in during late December?",
+    "choices": ["Sagittarius", "Capricorn", "Aquarius", "Pisces"],
+    "answer_index": 1,
+    "explanation": "The Sun enters Capricorn around December 21-22 and remains there until mid-January."
+  },
+  {
+    "id": "q7",
+    "question": "Who is considered the father of modern Western astrology?",
+    "choices": ["Carl Jung", "Alan Leo", "Ptolemy", "William Lilly"],
+    "answer_index": 1,
+    "explanation": "Alan Leo is often called the father of modern astrology, popularizing it in the late 19th and early 20th centuries."
+  },
+  {
+    "id": "q8",
+    "question": "Which planet is associated with communication and intellect?",
+    "choices": ["Venus", "Mars", "Mercury", "Jupiter"],
+    "answer_index": 2,
+    "explanation": "Mercury is the planet of communication, intellect, logic, and information exchange."
+  },
+  {
+    "id": "q9",
+    "question": "What is a stellium in astrology?",
+    "choices": ["A rare planetary alignment", "Three or more planets in the same sign or house", "A type of eclipse", "The strongest planet in a chart"],
+    "answer_index": 1,
+    "explanation": "A stellium occurs when three or more planets are clustered in the same zodiac sign or house, creating concentrated energy."
+  },
+  {
+    "id": "q10",
+    "question": "Which house in astrology is associated with career and public image?",
+    "choices": ["2nd House", "6th House", "10th House", "12th House"],
+    "answer_index": 2,
+    "explanation": "The 10th House, also known as the Midheaven (MC), represents career, public image, and life goals."
+  },
+  {
+    "id": "q11",
+    "question": "What does it mean when Mercury is in retrograde?",
+    "choices": ["Mercury moves backward in its orbit", "Mercury appears to move backward from Earth's perspective", "Mercury stops moving", "Mercury moves faster than usual"],
+    "answer_index": 1,
+    "explanation": "Mercury retrograde is an optical illusion where Mercury appears to move backward from Earth's perspective, often associated with communication disruptions."
+  },
+  {
+    "id": "q12",
+    "question": "Which zodiac sign is ruled by both traditional ruler Mars and modern ruler Pluto?",
+    "choices": ["Aries", "Scorpio", "Capricorn", "Aquarius"],
+    "answer_index": 1,
+    "explanation": "Scorpio is ruled by Mars (traditional) and Pluto (modern), reflecting themes of transformation, intensity, and power."
+  }
+]
