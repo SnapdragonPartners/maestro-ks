@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	_ "embed"
 	"flag"
@@ -24,6 +27,61 @@ type Question struct {
 	Choices     []string `json:"choices"`
 	AnswerIndex int      `json:"answer_index"`
 	Explanation string   `json:"explanation"`
+}
+
+// QuizState represents the client-side quiz state
+type QuizState struct {
+	QuestionIDs  []string `json:"question_ids"`
+	CurrentIndex int      `json:"current_index"`
+	Score        int      `json:"score"`
+}
+
+// hmacSecret is used to sign and verify quiz state
+// In production, this should be loaded from environment variables
+const hmacSecret = "astrology-quiz-secret-key-change-in-production"
+
+// signQuizState generates an HMAC-SHA256 signature for a quiz state
+func signQuizState(state QuizState) (string, error) {
+	// Serialize state to JSON
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	// Create HMAC-SHA256 hash
+	mac := hmac.New(sha256.New, []byte(hmacSecret))
+	mac.Write(stateJSON)
+
+	// Compute signature and encode to hex
+	signature := mac.Sum(nil)
+	return hex.EncodeToString(signature), nil
+}
+
+// verifyQuizState verifies the HMAC signature and returns the deserialized state
+func verifyQuizState(stateJSON string, signature string) (*QuizState, bool) {
+	// Decode the provided signature from hex
+	providedSig, err := hex.DecodeString(signature)
+	if err != nil {
+		return nil, false
+	}
+
+	// Re-compute HMAC for the received JSON
+	mac := hmac.New(sha256.New, []byte(hmacSecret))
+	mac.Write([]byte(stateJSON))
+	expectedSig := mac.Sum(nil)
+
+	// Compare signatures using constant-time comparison
+	if !hmac.Equal(providedSig, expectedSig) {
+		return nil, false
+	}
+
+	// Deserialize JSON to QuizState
+	var state QuizState
+	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
+		return nil, false
+	}
+
+	return &state, true
 }
 
 // loadQuestions loads questions from a JSON file and validates them
