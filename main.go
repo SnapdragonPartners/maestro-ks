@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	_ "embed"
 	"flag"
 	"fmt"
@@ -15,6 +16,42 @@ import (
 
 //go:embed home.html
 var homeHTML string
+
+// Question represents an astrology trivia question
+type Question struct {
+	ID          string   `json:"id"`
+	Question    string   `json:"question"`
+	Choices     []string `json:"choices"`
+	AnswerIndex int      `json:"answer_index"`
+	Explanation string   `json:"explanation"`
+}
+
+// loadQuestions loads questions from a JSON file and validates them
+func loadQuestions(filename string) ([]Question, error) {
+	// Read the file
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read questions file: %w", err)
+	}
+
+	// Parse JSON
+	var questions []Question
+	if err := json.Unmarshal(data, &questions); err != nil {
+		return nil, fmt.Errorf("failed to parse questions JSON: %w", err)
+	}
+
+	// Validate each question
+	for i, q := range questions {
+		if q.AnswerIndex < 0 {
+			return nil, fmt.Errorf("question %d (id: %s) has invalid answer_index: %d (must be >= 0)", i, q.ID, q.AnswerIndex)
+		}
+		if q.AnswerIndex >= len(q.Choices) {
+			return nil, fmt.Errorf("question %d (id: %s) has invalid answer_index: %d (must be < %d choices)", i, q.ID, q.AnswerIndex, len(q.Choices))
+		}
+	}
+
+	return questions, nil
+}
 
 // responseWriter wraps http.ResponseWriter to capture status code
 type responseWriter struct {
@@ -99,6 +136,14 @@ func main() {
 	// Parse CLI flags
 	port := flag.Int("port", 8080, "Port to listen on")
 	flag.Parse()
+
+	// Load questions from JSON file
+	questions, err := loadQuestions("questions.json")
+	if err != nil {
+		log.Printf("Warning: Failed to load questions: %v", err)
+	} else {
+		log.Printf("Successfully loaded %d questions", len(questions))
+	}
 
 	// Validate port
 	validPort := validatePort(*port)
