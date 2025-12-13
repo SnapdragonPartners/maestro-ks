@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -293,4 +295,420 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestSignQuizState_Success tests that signQuizState generates valid signatures
+func TestSignQuizState_Success(t *testing.T) {
+	state := QuizState{
+		QuestionIDs:  []string{"q1", "q2", "q3"},
+		CurrentIndex: 1,
+		Score:        10,
+	}
+
+	signature, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState() failed: %v", err)
+	}
+
+	// Verify signature is non-empty
+	if signature == "" {
+		t.Error("expected non-empty signature")
+	}
+
+	// Verify signature is valid hex (should be 64 hex chars for SHA256)
+	if len(signature) != 64 {
+		t.Errorf("expected signature length 64, got %d", len(signature))
+	}
+
+	// Verify signature is valid hex encoding
+	_, err = hex.DecodeString(signature)
+	if err != nil {
+		t.Errorf("signature is not valid hex: %v", err)
+	}
+
+	// Verify signature is deterministic
+	signature2, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState() second call failed: %v", err)
+	}
+	if signature != signature2 {
+		t.Error("expected same signature for same input (deterministic)")
+	}
+}
+
+// TestSignQuizState_DifferentStates tests that different states produce different signatures
+func TestSignQuizState_DifferentStates(t *testing.T) {
+	state1 := QuizState{
+		QuestionIDs:  []string{"q1", "q2", "q3"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	state2 := QuizState{
+		QuestionIDs:  []string{"q1", "q2", "q3"},
+		CurrentIndex: 1,
+		Score:        0,
+	}
+
+	state3 := QuizState{
+		QuestionIDs:  []string{"q1", "q2", "q3"},
+		CurrentIndex: 0,
+		Score:        5,
+	}
+
+	state4 := QuizState{
+		QuestionIDs:  []string{"q1", "q2"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	sig1, err := signQuizState(state1)
+	if err != nil {
+		t.Fatalf("signQuizState(state1) failed: %v", err)
+	}
+
+	sig2, err := signQuizState(state2)
+	if err != nil {
+		t.Fatalf("signQuizState(state2) failed: %v", err)
+	}
+
+	sig3, err := signQuizState(state3)
+	if err != nil {
+		t.Fatalf("signQuizState(state3) failed: %v", err)
+	}
+
+	sig4, err := signQuizState(state4)
+	if err != nil {
+		t.Fatalf("signQuizState(state4) failed: %v", err)
+	}
+
+	// All signatures should be different
+	if sig1 == sig2 {
+		t.Error("expected different signatures for different CurrentIndex")
+	}
+	if sig1 == sig3 {
+		t.Error("expected different signatures for different Score")
+	}
+	if sig1 == sig4 {
+		t.Error("expected different signatures for different QuestionIDs")
+	}
+}
+
+// TestVerifyQuizState_ValidSignature tests verification with valid signature
+func TestVerifyQuizState_ValidSignature(t *testing.T) {
+	originalState := QuizState{
+		QuestionIDs:  []string{"q1", "q2", "q3", "q4"},
+		CurrentIndex: 2,
+		Score:        15,
+	}
+
+	// Generate valid signature
+	signature, err := signQuizState(originalState)
+	if err != nil {
+		t.Fatalf("signQuizState() failed: %v", err)
+	}
+
+	// Serialize state to JSON
+	stateJSON, err := json.Marshal(originalState)
+	if err != nil {
+		t.Fatalf("json.Marshal() failed: %v", err)
+	}
+
+	// Verify the signature
+	verifiedState, valid := verifyQuizState(string(stateJSON), signature)
+
+	if !valid {
+		t.Error("expected signature to be valid")
+	}
+
+	if verifiedState == nil {
+		t.Fatal("expected non-nil state")
+	}
+
+	// Verify deserialized state matches original
+	if verifiedState.CurrentIndex != originalState.CurrentIndex {
+		t.Errorf("expected CurrentIndex %d, got %d", originalState.CurrentIndex, verifiedState.CurrentIndex)
+	}
+	if verifiedState.Score != originalState.Score {
+		t.Errorf("expected Score %d, got %d", originalState.Score, verifiedState.Score)
+	}
+	if len(verifiedState.QuestionIDs) != len(originalState.QuestionIDs) {
+		t.Errorf("expected %d QuestionIDs, got %d", len(originalState.QuestionIDs), len(verifiedState.QuestionIDs))
+	}
+	for i, qid := range originalState.QuestionIDs {
+		if verifiedState.QuestionIDs[i] != qid {
+			t.Errorf("expected QuestionID[%d] = %s, got %s", i, qid, verifiedState.QuestionIDs[i])
+		}
+	}
+}
+
+// TestVerifyQuizState_InvalidSignature tests verification with invalid signatures
+func TestVerifyQuizState_InvalidSignature(t *testing.T) {
+	state := QuizState{
+		QuestionIDs:  []string{"q1", "q2"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal() failed: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		signature string
+	}{
+		{
+			name:      "completely wrong signature",
+			signature: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		},
+		{
+			name:      "empty signature",
+			signature: "",
+		},
+		{
+			name:      "modified signature",
+			signature: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			verifiedState, valid := verifyQuizState(string(stateJSON), tt.signature)
+
+			if valid {
+				t.Error("expected signature to be invalid")
+			}
+			if verifiedState != nil {
+				t.Error("expected nil state for invalid signature")
+			}
+		})
+	}
+}
+
+// TestVerifyQuizState_TamperedData tests verification with tampered JSON data
+func TestVerifyQuizState_TamperedData(t *testing.T) {
+	originalState := QuizState{
+		QuestionIDs:  []string{"q1", "q2", "q3"},
+		CurrentIndex: 1,
+		Score:        5,
+	}
+
+	// Generate valid signature for original state
+	signature, err := signQuizState(originalState)
+	if err != nil {
+		t.Fatalf("signQuizState() failed: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		tamperedData string
+	}{
+		{
+			name:         "modified score",
+			tamperedData: `{"question_ids":["q1","q2","q3"],"current_index":1,"score":100}`,
+		},
+		{
+			name:         "modified current index",
+			tamperedData: `{"question_ids":["q1","q2","q3"],"current_index":2,"score":5}`,
+		},
+		{
+			name:         "added question ID",
+			tamperedData: `{"question_ids":["q1","q2","q3","q4"],"current_index":1,"score":5}`,
+		},
+		{
+			name:         "removed question ID",
+			tamperedData: `{"question_ids":["q1","q2"],"current_index":1,"score":5}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Try to verify tampered data with original signature
+			verifiedState, valid := verifyQuizState(tt.tamperedData, signature)
+
+			if valid {
+				t.Error("expected verification to fail for tampered data")
+			}
+			if verifiedState != nil {
+				t.Error("expected nil state for tampered data")
+			}
+		})
+	}
+}
+
+// TestVerifyQuizState_InvalidHex tests handling of invalid hex signatures
+func TestVerifyQuizState_InvalidHex(t *testing.T) {
+	state := QuizState{
+		QuestionIDs:  []string{"q1"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal() failed: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		signature string
+	}{
+		{
+			name:      "invalid hex characters",
+			signature: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+		},
+		{
+			name:      "non-hex string",
+			signature: "not-a-hex-string",
+		},
+		{
+			name:      "odd length hex",
+			signature: "abc",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			verifiedState, valid := verifyQuizState(string(stateJSON), tt.signature)
+
+			if valid {
+				t.Error("expected verification to fail for invalid hex")
+			}
+			if verifiedState != nil {
+				t.Error("expected nil state for invalid hex")
+			}
+		})
+	}
+}
+
+// TestVerifyQuizState_InvalidJSON tests handling of invalid JSON
+func TestVerifyQuizState_InvalidJSON(t *testing.T) {
+	state := QuizState{
+		QuestionIDs:  []string{"q1", "q2"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	// Generate a valid signature for the state
+	signature, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState() failed: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		invalidJSON string
+	}{
+		{
+			name:        "malformed JSON",
+			invalidJSON: `{this is not valid json}`,
+		},
+		{
+			name:        "incomplete JSON",
+			invalidJSON: `{"question_ids":["q1","q2"]`,
+		},
+		{
+			name:        "wrong type",
+			invalidJSON: `"not an object"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			verifiedState, valid := verifyQuizState(tt.invalidJSON, signature)
+
+			if valid {
+				t.Error("expected verification to fail for invalid JSON")
+			}
+			if verifiedState != nil {
+				t.Error("expected nil state for invalid JSON")
+			}
+		})
+	}
+}
+
+// TestQuizStateRoundTrip tests complete round-trip of sign and verify
+func TestQuizStateRoundTrip(t *testing.T) {
+	tests := []struct {
+		name  string
+		state QuizState
+	}{
+		{
+			name: "typical state",
+			state: QuizState{
+				QuestionIDs:  []string{"q1", "q2", "q3", "q4", "q5"},
+				CurrentIndex: 2,
+				Score:        10,
+			},
+		},
+		{
+			name: "empty question IDs",
+			state: QuizState{
+				QuestionIDs:  []string{},
+				CurrentIndex: 0,
+				Score:        0,
+			},
+		},
+		{
+			name: "maximum values",
+			state: QuizState{
+				QuestionIDs:  []string{"q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10"},
+				CurrentIndex: 9,
+				Score:        100,
+			},
+		},
+		{
+			name: "single question",
+			state: QuizState{
+				QuestionIDs:  []string{"q1"},
+				CurrentIndex: 0,
+				Score:        1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Sign the state
+			signature, err := signQuizState(tt.state)
+			if err != nil {
+				t.Fatalf("signQuizState() failed: %v", err)
+			}
+
+			// Serialize to JSON
+			stateJSON, err := json.Marshal(tt.state)
+			if err != nil {
+				t.Fatalf("json.Marshal() failed: %v", err)
+			}
+
+			// Verify with signature
+			verifiedState, valid := verifyQuizState(string(stateJSON), signature)
+
+			if !valid {
+				t.Error("expected valid signature after round-trip")
+			}
+
+			if verifiedState == nil {
+				t.Fatal("expected non-nil state after round-trip")
+			}
+
+			// Verify all fields match
+			if verifiedState.CurrentIndex != tt.state.CurrentIndex {
+				t.Errorf("CurrentIndex mismatch: expected %d, got %d", tt.state.CurrentIndex, verifiedState.CurrentIndex)
+			}
+			if verifiedState.Score != tt.state.Score {
+				t.Errorf("Score mismatch: expected %d, got %d", tt.state.Score, verifiedState.Score)
+			}
+			if len(verifiedState.QuestionIDs) != len(tt.state.QuestionIDs) {
+				t.Errorf("QuestionIDs length mismatch: expected %d, got %d", len(tt.state.QuestionIDs), len(verifiedState.QuestionIDs))
+			}
+			for i := range tt.state.QuestionIDs {
+				if verifiedState.QuestionIDs[i] != tt.state.QuestionIDs[i] {
+					t.Errorf("QuestionIDs[%d] mismatch: expected %s, got %s", i, tt.state.QuestionIDs[i], verifiedState.QuestionIDs[i])
+				}
+			}
+		})
+	}
 }
