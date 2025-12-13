@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -27,6 +28,12 @@ var homeHTML string
 
 //go:embed quiz.html
 var quizHTML string
+
+//go:embed results.html
+var resultsHTML string
+
+//go:embed leaderboard.html
+var leaderboardHTML string
 
 // Question represents an astrology trivia question
 type Question struct {
@@ -528,12 +535,176 @@ func quizPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ResultsPageData represents the data passed to the results.html template
+type ResultsPageData struct {
+	Score      int
+	Total      int
+	Percentage float64
+	QuizState  string
+	Signature  string
+}
+
+// quizResultsGetHandler handles GET requests to /quiz/results
+func quizResultsGetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract state and signature from query parameters
+	stateJSON := r.URL.Query().Get("state")
+	signature := r.URL.Query().Get("signature")
+
+	// Verify HMAC signature
+	state, valid := verifyQuizState(stateJSON, signature)
+	if !valid {
+		// Redirect to start over if tampered
+		http.Redirect(w, r, "/quiz", http.StatusSeeOther)
+		return
+	}
+
+	// Calculate percentage
+	total := len(state.QuestionIDs)
+	var percentage float64
+	if total > 0 {
+		percentage = float64(state.Score) / float64(total) * 100.0
+	}
+
+	// Prepare template data
+	data := ResultsPageData{
+		Score:      state.Score,
+		Total:      total,
+		Percentage: percentage,
+		QuizState:  stateJSON,
+		Signature:  signature,
+	}
+
+	// Parse and execute template
+	tmpl, err := template.New("results").Parse(resultsHTML)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error parsing results template: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing results template: %v", err)
+	}
+}
+
+// quizLeaderboardPostHandler handles POST requests to /quiz/leaderboard
+func quizLeaderboardPostHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	// Extract form values
+	name := r.FormValue("name")
+	stateJSON := r.FormValue("quizState")
+	signature := r.FormValue("signature")
+
+	// Verify HMAC signature
+	state, valid := verifyQuizState(stateJSON, signature)
+	if !valid {
+		// Redirect to start over if tampered
+		http.Redirect(w, r, "/quiz", http.StatusSeeOther)
+		return
+	}
+
+	// Validate name
+	name = strings.TrimSpace(name)
+	if len(name) == 0 {
+		http.Error(w, "Name cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(name) > 20 {
+		http.Error(w, "Name must be 20 characters or less", http.StatusBadRequest)
+		return
+	}
+
+	// Save score to leaderboard
+	total := len(state.QuestionIDs)
+	if err := saveScore(name, state.Score, total); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error saving score: %v", err)
+		return
+	}
+
+	// Redirect to leaderboard
+	http.Redirect(w, r, "/leaderboard", http.StatusSeeOther)
+}
+
+
+// LeaderboardPageData represents the data passed to the leaderboard.html template
+type LeaderboardPageData struct {
+	Entries []LeaderboardEntry
+}
+
+// leaderboardGetHandler handles GET requests to /leaderboard
+func leaderboardGetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get leaderboard entries
+	entries := getLeaderboard()
+
+	// Prepare template data
+	data := LeaderboardPageData{
+		Entries: entries,
+	}
+
+	// Create template with custom functions
+	tmpl := template.New("leaderboard").Funcs(template.FuncMap{
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"mul": func(a, b float64) float64 {
+			return a * b
+		},
+		"div": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+		"toFloat": func(i int) float64 {
+			return float64(i)
+		},
+	})
+
+	// Parse template
+	tmpl, err := tmpl.Parse(leaderboardHTML)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error parsing leaderboard template: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing leaderboard template: %v", err)
+	}
+}
+
 // setupRoutes configures the HTTP routes
 func setupRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Register specific routes first
 	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/quiz/results", quizResultsGetHandler)
+	mux.HandleFunc("/quiz/leaderboard", quizLeaderboardPostHandler)
+	mux.HandleFunc("/leaderboard", leaderboardGetHandler)
 	mux.HandleFunc("/quiz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			quizGetHandler(w, r)

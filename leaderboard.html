@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard - Astrology Quiz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #1976d2;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .leaderboard-container {
+            padding: 20px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        th {
+            background-color: #1976d2;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .rank {
+            font-weight: bold;
+            color: #1976d2;
+            text-align: center;
+            width: 60px;
+        }
+        .name {
+            font-weight: 500;
+        }
+        .score {
+            text-align: center;
+            width: 100px;
+        }
+        .percentage {
+            text-align: center;
+            width: 100px;
+        }
+        .date {
+            text-align: center;
+            width: 150px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        .actions {
+            text-align: center;
+            margin-top: 30px;
+        }
+        button {
+            background-color: #1976d2;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+        .empty-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="leaderboard-container">
+        <h1>High Scores</h1>
+
+        {{if .Entries}}
+        <table>
+            <thead>
+                <tr>
+                    <th class="rank">Rank</th>
+                    <th class="name">Name</th>
+                    <th class="score">Score</th>
+                    <th class="percentage">Percentage</th>
+                    <th class="date">Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range $index, $entry := .Entries}}
+                <tr>
+                    <td class="rank">{{add $index 1}}</td>
+                    <td class="name">{{$entry.Name}}</td>
+                    <td class="score">{{$entry.Score}}/{{$entry.Total}}</td>
+                    <td class="percentage">{{printf "%.1f" (div (mul (toFloat $entry.Score) 100.0) (toFloat $entry.Total))}}%</td>
+                    <td class="date">{{$entry.When.Format "Jan 02, 2006"}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <div class="empty-message">
+            <p>No scores yet. Be the first to submit a score!</p>
+        </div>
+        {{end}}
+
+        <div class="actions">
+            <a href="/quiz"><button>Play Quiz</button></a>
+        </div>
+    </div>
+</body>
+</html>

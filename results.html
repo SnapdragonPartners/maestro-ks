@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Results - Astrology Quiz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .results-container {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        h1 {
+            color: #1976d2;
+            margin-bottom: 30px;
+        }
+        .score-display {
+            font-size: 3em;
+            font-weight: bold;
+            color: #1976d2;
+            margin: 20px 0;
+        }
+        .percentage {
+            font-size: 1.5em;
+            color: #666;
+            margin-bottom: 40px;
+        }
+        .leaderboard-form {
+            margin: 40px 0;
+            padding: 30px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .leaderboard-form h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input[type="text"] {
+            width: 100%;
+            max-width: 400px;
+            padding: 12px;
+            font-size: 1em;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #1976d2;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+        .secondary-button {
+            background-color: #757575;
+        }
+        .secondary-button:hover {
+            background-color: #616161;
+        }
+        .actions {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="results-container">
+        <h1>Quiz Complete!</h1>
+
+        <div class="score-display">{{.Score}} / {{.Total}}</div>
+        <div class="percentage">{{printf "%.1f" .Percentage}}%</div>
+
+        <div class="leaderboard-form">
+            <h2>Submit to Leaderboard</h2>
+            <form method="POST" action="/quiz/leaderboard">
+                <input type="hidden" name="quizState" value="{{.QuizState}}">
+                <input type="hidden" name="signature" value="{{.Signature}}">
+
+                <div class="form-group">
+                    <label for="name">Your Name:</label>
+                    <input type="text" id="name" name="name" maxlength="20" required placeholder="Enter your name (max 20 characters)">
+                </div>
+
+                <button type="submit">Submit Score</button>
+            </form>
+        </div>
+
+        <div class="actions">
+            <a href="/quiz"><button class="secondary-button">Play Again</button></a>
+        </div>
+    </div>
+</body>
+</html>
