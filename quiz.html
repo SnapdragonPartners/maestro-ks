@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astrology Quiz</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .quiz-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .timer {
+            color: #d32f2f;
+            font-size: 1.2em;
+        }
+        .question {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+        }
+        .choices {
+            margin-bottom: 20px;
+        }
+        .choice {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .choice:hover {
+            background-color: #f5f5f5;
+        }
+        .choice input[type="radio"] {
+            margin-right: 10px;
+        }
+        .choice label {
+            cursor: pointer;
+            display: inline;
+        }
+        button {
+            background-color: #1976d2;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="quiz-header">
+        <div class="question-counter">Question {{.CurrentIndex}} of {{.TotalQuestions}}</div>
+        <div class="score">Score: {{.Score}}</div>
+        <div class="timer" id="timer">Time: 20s</div>
+    </div>
+
+    <div class="question">{{.Question.Question}}</div>
+
+    <form id="quizForm" method="POST" action="/quiz">
+        <input type="hidden" name="quizState" value="{{.QuizState}}">
+        <input type="hidden" name="signature" value="{{.Signature}}">
+        <input type="hidden" name="answer" id="answerInput" value="">
+
+        <div class="choices">
+            {{range $index, $choice := .Question.Choices}}
+            <div class="choice">
+                <input type="radio" name="choice" id="choice{{$index}}" value="{{$index}}" onchange="document.getElementById('answerInput').value = this.value">
+                <label for="choice{{$index}}">{{$choice}}</label>
+            </div>
+            {{end}}
+        </div>
+
+        <button type="submit">Submit Answer</button>
+    </form>
+
+    <script>
+        let timeLeft = 20;
+        const timerElement = document.getElementById('timer');
+        const quizForm = document.getElementById('quizForm');
+
+        const countdown = setInterval(function() {
+            timeLeft--;
+            timerElement.textContent = 'Time: ' + timeLeft + 's';
+
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                // Auto-submit form when timer expires (answer will be empty/incorrect)
+                quizForm.submit();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
