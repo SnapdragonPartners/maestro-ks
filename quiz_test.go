@@ -3,8 +3,13 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -626,6 +631,447 @@ func TestVerifyQuizState_InvalidJSON(t *testing.T) {
 				t.Error("expected nil state for invalid JSON")
 			}
 		})
+	}
+}
+
+// TestQuizGetHandler_Success tests GET /quiz returns a valid quiz page
+func TestQuizGetHandler_Success(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 0, Explanation: "Exp1"},
+		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 1, Explanation: "Exp2"},
+		{ID: "q3", Question: "Test Q3?", Choices: []string{"1", "2", "3"}, AnswerIndex: 2, Explanation: "Exp3"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	// Create test request
+	req := httptest.NewRequest(http.MethodGet, "/quiz", nil)
+	w := httptest.NewRecorder()
+
+	// Call handler
+	quizGetHandler(w, req)
+
+	// Verify response
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+
+	// Check for essential HTML elements
+	if !contains(body, "Question 1 of 3") {
+		t.Error("expected 'Question 1 of 3' in response")
+	}
+	if !contains(body, "<form") {
+		t.Error("expected form in response")
+	}
+	if !contains(body, "quizState") {
+		t.Error("expected quizState hidden input")
+	}
+	if !contains(body, "signature") {
+		t.Error("expected signature hidden input")
+	}
+	if !contains(body, "Score: 0") {
+		t.Error("expected 'Score: 0' in response")
+	}
+}
+
+// TestQuizGetHandler_MethodNotAllowed tests non-GET methods return 405
+func TestQuizGetHandler_MethodNotAllowed(t *testing.T) {
+	methods := []string{http.MethodPost, http.MethodPut, http.MethodDelete}
+
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			req := httptest.NewRequest(method, "/quiz", nil)
+			w := httptest.NewRecorder()
+
+			quizGetHandler(w, req)
+
+			if w.Code != http.StatusMethodNotAllowed {
+				t.Errorf("expected status 405 for %s, got %d", method, w.Code)
+			}
+		})
+	}
+}
+
+// TestQuizPostHandler_ValidAnswer_Correct tests submitting a correct answer
+func TestQuizPostHandler_ValidAnswer_Correct(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 1, Explanation: "Exp1"},
+		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 2, Explanation: "Exp2"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	// Create initial state
+	state := QuizState{
+		QuestionIDs:  []string{"q1", "q2"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	// Sign state
+	signature, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState failed: %v", err)
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Create POST request with correct answer (index 1)
+	formData := fmt.Sprintf("quizState=%s&signature=%s&answer=1", string(stateJSON), signature)
+	req := httptest.NewRequest(http.MethodPost, "/quiz", nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = io.NopCloser(strings.NewReader(formData))
+
+	w := httptest.NewRecorder()
+
+	// Call handler
+	quizPostHandler(w, req)
+
+	// Verify response
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+
+	// Check that score was incremented
+	if !contains(body, "Score: 1") {
+		t.Error("expected score to increment to 1")
+	}
+
+	// Check that we're on question 2
+	if !contains(body, "Question 2 of 2") {
+		t.Error("expected 'Question 2 of 2'")
+	}
+}
+
+// TestQuizPostHandler_ValidAnswer_Incorrect tests submitting an incorrect answer
+func TestQuizPostHandler_ValidAnswer_Incorrect(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 1, Explanation: "Exp1"},
+		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 2, Explanation: "Exp2"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	// Create initial state
+	state := QuizState{
+		QuestionIDs:  []string{"q1", "q2"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	// Sign state
+	signature, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState failed: %v", err)
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Create POST request with incorrect answer (index 0, correct is 1)
+	formData := fmt.Sprintf("quizState=%s&signature=%s&answer=0", string(stateJSON), signature)
+	req := httptest.NewRequest(http.MethodPost, "/quiz", nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = io.NopCloser(strings.NewReader(formData))
+
+	w := httptest.NewRecorder()
+
+	// Call handler
+	quizPostHandler(w, req)
+
+	// Verify response
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+
+	// Check that score didn't increment
+	if !contains(body, "Score: 0") {
+		t.Error("expected score to remain 0")
+	}
+
+	// Check that we're on question 2
+	if !contains(body, "Question 2 of 2") {
+		t.Error("expected 'Question 2 of 2'")
+	}
+}
+
+// TestQuizPostHandler_InvalidSignature tests tampering detection
+func TestQuizPostHandler_InvalidSignature(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	// Create state with tampered score
+	state := QuizState{
+		QuestionIDs:  []string{"q1"},
+		CurrentIndex: 0,
+		Score:        100, // Tampered high score
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Use a fake signature
+	fakeSignature := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+	// Create POST request
+	formData := fmt.Sprintf("quizState=%s&signature=%s&answer=0", string(stateJSON), fakeSignature)
+	req := httptest.NewRequest(http.MethodPost, "/quiz", nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = io.NopCloser(strings.NewReader(formData))
+
+	w := httptest.NewRecorder()
+
+	// Call handler
+	quizPostHandler(w, req)
+
+	// Verify redirect to /quiz (start over)
+	if w.Code != http.StatusSeeOther && w.Code != http.StatusFound {
+		t.Errorf("expected redirect status (303 or 302), got %d", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if location != "/quiz" {
+		t.Errorf("expected redirect to /quiz, got %s", location)
+	}
+}
+
+// TestQuizPostHandler_LastQuestion tests completion and redirect to results
+func TestQuizPostHandler_LastQuestion(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	// Create state at last question
+	state := QuizState{
+		QuestionIDs:  []string{"q1"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	// Sign state
+	signature, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState failed: %v", err)
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Create POST request with answer
+	formData := fmt.Sprintf("quizState=%s&signature=%s&answer=0", string(stateJSON), signature)
+	req := httptest.NewRequest(http.MethodPost, "/quiz", nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = io.NopCloser(strings.NewReader(formData))
+
+	w := httptest.NewRecorder()
+
+	// Call handler
+	quizPostHandler(w, req)
+
+	// Verify redirect to results
+	if w.Code != http.StatusSeeOther && w.Code != http.StatusFound {
+		t.Errorf("expected redirect status (303 or 302), got %d", w.Code)
+	}
+
+	location := w.Header().Get("Location")
+	if !contains(location, "/quiz/results") {
+		t.Errorf("expected redirect to /quiz/results, got %s", location)
+	}
+
+	// Verify state and signature are in URL
+	if !contains(location, "state=") {
+		t.Error("expected state parameter in redirect URL")
+	}
+	if !contains(location, "signature=") {
+		t.Error("expected signature parameter in redirect URL")
+	}
+}
+
+// TestQuizPostHandler_MissingFields tests handling of missing form fields
+func TestQuizPostHandler_MissingFields(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	tests := []struct {
+		name     string
+		formData string
+	}{
+		{
+			name:     "missing signature",
+			formData: "quizState={}&answer=0",
+		},
+		{
+			name:     "missing quizState",
+			formData: "signature=abc&answer=0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/quiz", nil)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Body = io.NopCloser(strings.NewReader(tt.formData))
+
+			w := httptest.NewRecorder()
+
+			quizPostHandler(w, req)
+
+			// Should redirect to /quiz to start over
+			if w.Code != http.StatusSeeOther && w.Code != http.StatusFound {
+				t.Errorf("expected redirect status, got %d", w.Code)
+			}
+		})
+	}
+}
+
+// TestQuizPostHandler_TimerExpiration tests empty answer submission
+func TestQuizPostHandler_TimerExpiration(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y"}, AnswerIndex: 1, Explanation: "Exp2"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	// Create state
+	state := QuizState{
+		QuestionIDs:  []string{"q1", "q2"},
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	// Sign state
+	signature, err := signQuizState(state)
+	if err != nil {
+		t.Fatalf("signQuizState failed: %v", err)
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("json.Marshal failed: %v", err)
+	}
+
+	// Create POST request with empty answer (timer expired)
+	formData := fmt.Sprintf("quizState=%s&signature=%s&answer=", string(stateJSON), signature)
+	req := httptest.NewRequest(http.MethodPost, "/quiz", nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Body = io.NopCloser(strings.NewReader(formData))
+
+	w := httptest.NewRecorder()
+
+	// Call handler
+	quizPostHandler(w, req)
+
+	// Verify response
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", w.Code)
+	}
+
+	body := w.Body.String()
+
+	// Check that score didn't increment
+	if !contains(body, "Score: 0") {
+		t.Error("expected score to remain 0 for empty answer")
+	}
+
+	// Check that quiz continues to next question
+	if !contains(body, "Question 2 of 2") {
+		t.Error("expected quiz to continue to question 2")
+	}
+}
+
+// TestSetupRoutes_QuizEndpoints tests that /quiz routes are registered correctly
+func TestSetupRoutes_QuizEndpoints(t *testing.T) {
+	// Setup test questions
+	oldQuestions := questions
+	questions = []Question{
+		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	}
+	defer func() { questions = oldQuestions }()
+
+	mux := setupRoutes()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// Test GET /quiz
+	resp, err := http.Get(server.URL + "/quiz")
+	if err != nil {
+		t.Fatalf("GET /quiz failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200 for GET /quiz, got %d", resp.StatusCode)
+	}
+
+	// Test POST /quiz (should redirect with invalid data)
+	// Create client that doesn't follow redirects
+	noRedirectClient := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	postReq, err := http.NewRequest(http.MethodPost, server.URL+"/quiz", nil)
+	if err != nil {
+		t.Fatalf("failed to create POST request: %v", err)
+	}
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err = noRedirectClient.Do(postReq)
+	if err != nil {
+		t.Fatalf("POST /quiz failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should get redirect or bad request
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected redirect or bad request for POST /quiz, got %d", resp.StatusCode)
+	}
+
+	// Test other methods return 405
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/quiz", nil)
+	if err != nil {
+		t.Fatalf("failed to create PUT request: %v", err)
+	}
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT /quiz failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405 for PUT /quiz, got %d", resp.StatusCode)
 	}
 }
 

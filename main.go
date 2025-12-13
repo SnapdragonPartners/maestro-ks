@@ -9,11 +9,14 @@ import (
 	_ "embed"
 	"flag"
 	"fmt"
+	"html/template"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +24,9 @@ import (
 
 //go:embed home.html
 var homeHTML string
+
+//go:embed quiz.html
+var quizHTML string
 
 // Question represents an astrology trivia question
 type Question struct {
@@ -56,10 +62,14 @@ type LeaderboardManager struct {
 const (
 	MaxLeaderboardSize   = 20
 	leaderboardFilename  = "leaderboard.json"
+	NumQuestions         = 3  // Number of questions per quiz
 )
 
-// Global leaderboard manager instance
-var leaderboardManager LeaderboardManager
+// Global instances
+var (
+	leaderboardManager LeaderboardManager
+	questions []Question
+)
 
 // hmacSecret is used to sign and verify quiz state
 // In production, this should be loaded from environment variables
@@ -281,12 +291,258 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+// QuizPageData represents the data passed to the quiz.html template
+type QuizPageData struct {
+	Question       Question
+	CurrentIndex   int
+	TotalQuestions int
+	Score          int
+	QuizState      string
+	Signature      string
+}
+
+// quizGetHandler handles GET requests to /quiz and starts a new quiz
+func quizGetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Select random questions
+	numToSelect := NumQuestions
+	if len(questions) < NumQuestions {
+		numToSelect = len(questions)
+	}
+
+	// Create a copy of question indices and shuffle them
+	indices := make([]int, len(questions))
+	for i := range indices {
+		indices[i] = i
+	}
+	rand.Shuffle(len(indices), func(i, j int) {
+		indices[i], indices[j] = indices[j], indices[i]
+	})
+
+	// Select the first numToSelect questions
+	selectedQuestionIDs := make([]string, numToSelect)
+	for i := 0; i < numToSelect; i++ {
+		selectedQuestionIDs[i] = questions[indices[i]].ID
+	}
+
+	// Initialize quiz state
+	state := QuizState{
+		QuestionIDs:  selectedQuestionIDs,
+		CurrentIndex: 0,
+		Score:        0,
+	}
+
+	// Generate signature
+	signature, err := signQuizState(state)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error signing quiz state: %v", err)
+		return
+	}
+
+	// Serialize state to JSON
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error marshaling quiz state: %v", err)
+		return
+	}
+
+	// Find the first question
+	var currentQuestion Question
+	for _, q := range questions {
+		if q.ID == selectedQuestionIDs[0] {
+			currentQuestion = q
+			break
+		}
+	}
+
+	// Prepare template data
+	data := QuizPageData{
+		Question:       currentQuestion,
+		CurrentIndex:   1, // Display as 1-indexed
+		TotalQuestions: numToSelect,
+		Score:          0,
+		QuizState:      string(stateJSON),
+		Signature:      signature,
+	}
+
+	// Parse and execute template
+	tmpl, err := template.New("quiz").Parse(quizHTML)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Error parsing quiz template: %v", err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing quiz template: %v", err)
+	}
+}
+
+// quizPostHandler handles POST requests to /quiz and processes answer submissions
+func quizPostHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	stateJSON := r.FormValue("quizState")
+	signature := r.FormValue("signature")
+	answerStr := r.FormValue("answer")
+
+	// Verify HMAC signature
+	state, valid := verifyQuizState(stateJSON, signature)
+	if !valid {
+		// Redirect to start over
+		http.Redirect(w, r, "/quiz", http.StatusSeeOther)
+		return
+	}
+
+	// Find current question
+	if state.CurrentIndex >= len(state.QuestionIDs) {
+		http.Error(w, "Invalid quiz state", http.StatusBadRequest)
+		return
+	}
+
+	currentQuestionID := state.QuestionIDs[state.CurrentIndex]
+	var currentQuestion Question
+	found := false
+	for _, q := range questions {
+		if q.ID == currentQuestionID {
+			currentQuestion = q
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		log.Printf("Question ID %s not found", currentQuestionID)
+		return
+	}
+
+	// Check answer if provided
+	if answerStr != "" {
+		answerIndex, err := strconv.Atoi(answerStr)
+		if err == nil && answerIndex == currentQuestion.AnswerIndex {
+			state.Score++
+		}
+	}
+
+	// Update state
+	state.CurrentIndex++
+
+	// Check if more questions remain
+	if state.CurrentIndex < len(state.QuestionIDs) {
+		// Generate new signature for updated state
+		newSignature, err := signQuizState(*state)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Error signing quiz state: %v", err)
+			return
+		}
+
+		// Serialize updated state
+		newStateJSON, err := json.Marshal(state)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Error marshaling quiz state: %v", err)
+			return
+		}
+
+		// Find next question
+		nextQuestionID := state.QuestionIDs[state.CurrentIndex]
+		var nextQuestion Question
+		found = false
+		for _, q := range questions {
+			if q.ID == nextQuestionID {
+				nextQuestion = q
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Question ID %s not found", nextQuestionID)
+			return
+		}
+
+		// Prepare template data for next question
+		data := QuizPageData{
+			Question:       nextQuestion,
+			CurrentIndex:   state.CurrentIndex + 1, // Display as 1-indexed
+			TotalQuestions: len(state.QuestionIDs),
+			Score:          state.Score,
+			QuizState:      string(newStateJSON),
+			Signature:      newSignature,
+		}
+
+		// Parse and execute template
+		tmpl, err := template.New("quiz").Parse(quizHTML)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Error parsing quiz template: %v", err)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := tmpl.Execute(w, data); err != nil {
+			log.Printf("Error executing quiz template: %v", err)
+		}
+	} else {
+		// Quiz complete - redirect to results
+		// Serialize final state
+		finalStateJSON, err := json.Marshal(state)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Error marshaling final state: %v", err)
+			return
+		}
+
+		// Generate signature for final state
+		finalSignature, err := signQuizState(*state)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("Error signing final state: %v", err)
+			return
+		}
+
+		// Redirect to results with state
+		redirectURL := fmt.Sprintf("/quiz/results?state=%s&signature=%s",
+			template.URLQueryEscaper(string(finalStateJSON)),
+			template.URLQueryEscaper(finalSignature))
+		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+	}
+}
+
 // setupRoutes configures the HTTP routes
 func setupRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Register specific routes first
 	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/quiz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			quizGetHandler(w, r)
+		} else if r.Method == http.MethodPost {
+			quizPostHandler(w, r)
+		} else {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Handle exact root path match
 		if r.URL.Path == "/" {
@@ -306,7 +562,8 @@ func main() {
 	flag.Parse()
 
 	// Load questions from JSON file
-	questions, err := loadQuestions("questions.json")
+	var err error
+	questions, err = loadQuestions("questions.json")
 	if err != nil {
 		log.Printf("Warning: Failed to load questions: %v", err)
 	} else {
