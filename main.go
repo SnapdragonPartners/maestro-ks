@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -35,6 +37,29 @@ type QuizState struct {
 	CurrentIndex int      `json:"current_index"`
 	Score        int      `json:"score"`
 }
+
+// LeaderboardEntry represents a single leaderboard entry
+type LeaderboardEntry struct {
+	Name  string    `json:"name"`
+	Score int       `json:"score"`
+	Total int       `json:"total"`
+	When  time.Time `json:"when"`
+}
+
+// LeaderboardManager manages the leaderboard with thread-safe access
+type LeaderboardManager struct {
+	mu      sync.Mutex
+	entries []LeaderboardEntry
+}
+
+// Constants for leaderboard configuration
+const (
+	MaxLeaderboardSize   = 20
+	leaderboardFilename  = "leaderboard.json"
+)
+
+// Global leaderboard manager instance
+var leaderboardManager LeaderboardManager
 
 // hmacSecret is used to sign and verify quiz state
 // In production, this should be loaded from environment variables
@@ -109,6 +134,91 @@ func loadQuestions(filename string) ([]Question, error) {
 	}
 
 	return questions, nil
+}
+
+// loadLeaderboard loads leaderboard entries from the JSON file
+func loadLeaderboard() error {
+	// Read the file
+	data, err := os.ReadFile(leaderboardFilename)
+	if err != nil {
+		// If file doesn't exist, create an empty file
+		if os.IsNotExist(err) {
+			emptyData := []byte("[]")
+			if err := os.WriteFile(leaderboardFilename, emptyData, 0644); err != nil {
+				return fmt.Errorf("failed to create leaderboard file: %w", err)
+			}
+			leaderboardManager.entries = []LeaderboardEntry{}
+			return nil
+		}
+		return fmt.Errorf("failed to read leaderboard file: %w", err)
+	}
+
+	// Parse JSON
+	var entries []LeaderboardEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("failed to parse leaderboard JSON: %w", err)
+	}
+
+	leaderboardManager.entries = entries
+	return nil
+}
+
+// saveLeaderboard persists the current leaderboard entries to the JSON file
+func saveLeaderboard() error {
+	// Marshal entries to JSON with indentation
+	data, err := json.MarshalIndent(leaderboardManager.entries, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal leaderboard: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(leaderboardFilename, data, 0644); err != nil {
+		return fmt.Errorf("failed to write leaderboard file: %w", err)
+	}
+
+	return nil
+}
+
+// saveScore adds a new score to the leaderboard in a thread-safe manner
+func saveScore(name string, score int, total int) error {
+	leaderboardManager.mu.Lock()
+	defer leaderboardManager.mu.Unlock()
+
+	// Create new entry with current timestamp
+	entry := LeaderboardEntry{
+		Name:  name,
+		Score: score,
+		Total: total,
+		When:  time.Now(),
+	}
+
+	// Append to entries
+	leaderboardManager.entries = append(leaderboardManager.entries, entry)
+
+	// Sort entries: Score DESC (higher first), When ASC (earlier first for same score)
+	sort.Slice(leaderboardManager.entries, func(i, j int) bool {
+		if leaderboardManager.entries[i].Score != leaderboardManager.entries[j].Score {
+			return leaderboardManager.entries[i].Score > leaderboardManager.entries[j].Score
+		}
+		return leaderboardManager.entries[i].When.Before(leaderboardManager.entries[j].When)
+	})
+
+	// Truncate to MaxLeaderboardSize if necessary
+	if len(leaderboardManager.entries) > MaxLeaderboardSize {
+		leaderboardManager.entries = leaderboardManager.entries[:MaxLeaderboardSize]
+	}
+
+	// Persist to file
+	return saveLeaderboard()
+}
+
+// getLeaderboard returns a copy of the current leaderboard entries
+func getLeaderboard() []LeaderboardEntry {
+	leaderboardManager.mu.Lock()
+	defer leaderboardManager.mu.Unlock()
+
+	// Return a copy to prevent external modification
+	return append([]LeaderboardEntry{}, leaderboardManager.entries...)
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code
@@ -201,6 +311,13 @@ func main() {
 		log.Printf("Warning: Failed to load questions: %v", err)
 	} else {
 		log.Printf("Successfully loaded %d questions", len(questions))
+	}
+
+	// Load leaderboard from JSON file
+	if err := loadLeaderboard(); err != nil {
+		log.Printf("Warning: Failed to load leaderboard: %v", err)
+	} else {
+		log.Printf("Successfully loaded leaderboard with %d entries", len(leaderboardManager.entries))
 	}
 
 	// Validate port
