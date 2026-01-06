@@ -49,14 +49,16 @@ type QuizState struct {
 	QuestionIDs  []string `json:"question_ids"`
 	CurrentIndex int      `json:"current_index"`
 	Score        int      `json:"score"`
+	QuizType     string   `json:"quiz_type"` // "astrology" or "tarot"
 }
 
 // LeaderboardEntry represents a single leaderboard entry
 type LeaderboardEntry struct {
-	Name  string    `json:"name"`
-	Score int       `json:"score"`
-	Total int       `json:"total"`
-	When  time.Time `json:"when"`
+	Name     string    `json:"name"`
+	Score    int       `json:"score"`
+	Total    int       `json:"total"`
+	When     time.Time `json:"when"`
+	QuizType string    `json:"quiz_type"` // "astrology" or "tarot"
 }
 
 // LeaderboardManager manages the leaderboard with thread-safe access
@@ -75,7 +77,7 @@ const (
 // Global instances
 var (
 	leaderboardManager LeaderboardManager
-	questions []Question
+	questionSets       map[string][]Question // map[quizType][]Question
 )
 
 // hmacSecret is used to sign and verify quiz state
@@ -197,16 +199,17 @@ func saveLeaderboard() error {
 }
 
 // saveScore adds a new score to the leaderboard in a thread-safe manner
-func saveScore(name string, score int, total int) error {
+func saveScore(name string, score int, total int, quizType string) error {
 	leaderboardManager.mu.Lock()
 	defer leaderboardManager.mu.Unlock()
 
 	// Create new entry with current timestamp
 	entry := LeaderboardEntry{
-		Name:  name,
-		Score: score,
-		Total: total,
-		When:  time.Now(),
+		Name:     name,
+		Score:    score,
+		Total:    total,
+		When:     time.Now(),
+		QuizType: quizType,
 	}
 
 	// Append to entries
@@ -315,6 +318,19 @@ func quizGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine quiz type (default to "astrology")
+	quizType := r.URL.Query().Get("type")
+	if quizType == "" {
+		quizType = "astrology"
+	}
+
+	// Get questions for the specified type
+	questions, exists := questionSets[quizType]
+	if !exists || len(questions) == 0 {
+		http.Error(w, "Quiz type not found", http.StatusNotFound)
+		return
+	}
+
 	// Select random questions
 	numToSelect := NumQuestions
 	if len(questions) < NumQuestions {
@@ -341,6 +357,7 @@ func quizGetHandler(w http.ResponseWriter, r *http.Request) {
 		QuestionIDs:  selectedQuestionIDs,
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     quizType,
 	}
 
 	// Generate signature
@@ -423,6 +440,13 @@ func quizPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get questions for the quiz type
+	questions, exists := questionSets[state.QuizType]
+	if !exists {
+		http.Error(w, "Invalid quiz type", http.StatusBadRequest)
+		return
+	}
+
 	currentQuestionID := state.QuestionIDs[state.CurrentIndex]
 	var currentQuestion Question
 	found := false
@@ -469,7 +493,7 @@ func quizPostHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Find next question
+		// Find next question (questions variable already retrieved earlier)
 		nextQuestionID := state.QuestionIDs[state.CurrentIndex]
 		var nextQuestion Question
 		found = false
@@ -632,7 +656,7 @@ func quizLeaderboardPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Save score to leaderboard
 	total := len(state.QuestionIDs)
-	if err := saveScore(name, state.Score, total); err != nil {
+	if err := saveScore(name, state.Score, total, state.QuizType); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		log.Printf("Error saving score: %v", err)
 		return
@@ -732,13 +756,25 @@ func main() {
 	port := flag.Int("port", 8080, "Port to listen on")
 	flag.Parse()
 
-	// Load questions from JSON file
-	var err error
-	questions, err = loadQuestions("questions.json")
+	// Initialize question sets map
+	questionSets = make(map[string][]Question)
+
+	// Load astrology questions
+	astrologyQuestions, err := loadQuestions("questions.json")
 	if err != nil {
-		log.Printf("Warning: Failed to load questions: %v", err)
+		log.Printf("Warning: Failed to load astrology questions: %v", err)
 	} else {
-		log.Printf("Successfully loaded %d questions", len(questions))
+		questionSets["astrology"] = astrologyQuestions
+		log.Printf("Successfully loaded %d astrology questions", len(astrologyQuestions))
+	}
+
+	// Load tarot questions
+	tarotQuestions, err := loadQuestions("tarot_questions.json")
+	if err != nil {
+		log.Printf("Warning: Failed to load tarot questions: %v", err)
+	} else {
+		questionSets["tarot"] = tarotQuestions
+		log.Printf("Successfully loaded %d tarot questions", len(tarotQuestions))
 	}
 
 	// Load leaderboard from JSON file

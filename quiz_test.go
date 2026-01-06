@@ -308,6 +308,7 @@ func TestSignQuizState_Success(t *testing.T) {
 		QuestionIDs:  []string{"q1", "q2", "q3"},
 		CurrentIndex: 1,
 		Score:        10,
+		QuizType:     "astrology",
 	}
 
 	signature, err := signQuizState(state)
@@ -453,6 +454,7 @@ func TestVerifyQuizState_InvalidSignature(t *testing.T) {
 		QuestionIDs:  []string{"q1", "q2"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	stateJSON, err := json.Marshal(state)
@@ -549,6 +551,7 @@ func TestVerifyQuizState_InvalidHex(t *testing.T) {
 		QuestionIDs:  []string{"q1"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	stateJSON, err := json.Marshal(state)
@@ -594,6 +597,7 @@ func TestVerifyQuizState_InvalidJSON(t *testing.T) {
 		QuestionIDs:  []string{"q1", "q2"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	// Generate a valid signature for the state
@@ -637,13 +641,15 @@ func TestVerifyQuizState_InvalidJSON(t *testing.T) {
 // TestQuizGetHandler_Success tests GET /quiz returns a valid quiz page
 func TestQuizGetHandler_Success(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 0, Explanation: "Exp1"},
-		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 1, Explanation: "Exp2"},
-		{ID: "q3", Question: "Test Q3?", Choices: []string{"1", "2", "3"}, AnswerIndex: 2, Explanation: "Exp3"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 0, Explanation: "Exp1"},
+			{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 1, Explanation: "Exp2"},
+			{ID: "q3", Question: "Test Q3?", Choices: []string{"1", "2", "3"}, AnswerIndex: 2, Explanation: "Exp3"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	// Create test request
 	req := httptest.NewRequest(http.MethodGet, "/quiz", nil)
@@ -698,18 +704,21 @@ func TestQuizGetHandler_MethodNotAllowed(t *testing.T) {
 // TestQuizPostHandler_ValidAnswer_Correct tests submitting a correct answer
 func TestQuizPostHandler_ValidAnswer_Correct(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 1, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 1, Explanation: "Exp1"},
 		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 2, Explanation: "Exp2"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	// Create initial state
 	state := QuizState{
 		QuestionIDs:  []string{"q1", "q2"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	// Sign state
@@ -755,18 +764,21 @@ func TestQuizPostHandler_ValidAnswer_Correct(t *testing.T) {
 // TestQuizPostHandler_ValidAnswer_Incorrect tests submitting an incorrect answer
 func TestQuizPostHandler_ValidAnswer_Incorrect(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 1, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B", "C"}, AnswerIndex: 1, Explanation: "Exp1"},
 		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y", "Z"}, AnswerIndex: 2, Explanation: "Exp2"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	// Create initial state
 	state := QuizState{
 		QuestionIDs:  []string{"q1", "q2"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	// Sign state
@@ -812,17 +824,20 @@ func TestQuizPostHandler_ValidAnswer_Incorrect(t *testing.T) {
 // TestQuizPostHandler_InvalidSignature tests tampering detection
 func TestQuizPostHandler_InvalidSignature(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	// Create state with tampered score
 	state := QuizState{
 		QuestionIDs:  []string{"q1"},
 		CurrentIndex: 0,
 		Score:        100, // Tampered high score
+		QuizType:     "astrology",
 	}
 
 	stateJSON, err := json.Marshal(state)
@@ -858,17 +873,20 @@ func TestQuizPostHandler_InvalidSignature(t *testing.T) {
 // TestQuizPostHandler_LastQuestion tests completion and redirect to results
 func TestQuizPostHandler_LastQuestion(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	// Create state at last question
 	state := QuizState{
 		QuestionIDs:  []string{"q1"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	// Sign state
@@ -915,11 +933,13 @@ func TestQuizPostHandler_LastQuestion(t *testing.T) {
 // TestQuizPostHandler_MissingFields tests handling of missing form fields
 func TestQuizPostHandler_MissingFields(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	tests := []struct {
 		name     string
@@ -956,18 +976,21 @@ func TestQuizPostHandler_MissingFields(t *testing.T) {
 // TestQuizPostHandler_TimerExpiration tests empty answer submission
 func TestQuizPostHandler_TimerExpiration(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
 		{ID: "q2", Question: "Test Q2?", Choices: []string{"X", "Y"}, AnswerIndex: 1, Explanation: "Exp2"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	// Create state
 	state := QuizState{
 		QuestionIDs:  []string{"q1", "q2"},
 		CurrentIndex: 0,
 		Score:        0,
+		QuizType:     "astrology",
 	}
 
 	// Sign state
@@ -1013,11 +1036,13 @@ func TestQuizPostHandler_TimerExpiration(t *testing.T) {
 // TestSetupRoutes_QuizEndpoints tests that /quiz routes are registered correctly
 func TestSetupRoutes_QuizEndpoints(t *testing.T) {
 	// Setup test questions
-	oldQuestions := questions
-	questions = []Question{
-		{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+	oldQuestionSets := questionSets
+	questionSets = map[string][]Question{
+		"astrology": {
+			{ID: "q1", Question: "Test Q1?", Choices: []string{"A", "B"}, AnswerIndex: 0, Explanation: "Exp1"},
+		},
 	}
-	defer func() { questions = oldQuestions }()
+	defer func() { questionSets = oldQuestionSets }()
 
 	mux := setupRoutes()
 	server := httptest.NewServer(mux)

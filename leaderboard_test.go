@@ -171,7 +171,7 @@ func TestSaveScore_SingleEntry(t *testing.T) {
 
 	// Save a score
 	before := time.Now()
-	err := saveScore("Alice", 95, 100)
+	err := saveScore("Alice", 95, 100, "astrology")
 	after := time.Now()
 
 	if err != nil {
@@ -238,7 +238,7 @@ func TestSaveScore_Sorting(t *testing.T) {
 	}
 
 	// Call saveScore to trigger sorting
-	if err := saveScore("Eve", 98, 100); err != nil {
+	if err := saveScore("Eve", 98, 100, "astrology"); err != nil {
 		t.Fatalf("saveScore() failed: %v", err)
 	}
 
@@ -285,7 +285,7 @@ func TestSaveScore_Truncation(t *testing.T) {
 	// Add 25 entries (exceeding MaxLeaderboardSize of 20)
 	for i := 0; i < 25; i++ {
 		// Use descending scores so we know which should be kept
-		err := saveScore(fmt.Sprintf("Player%d", i), 100-i, 100)
+		err := saveScore(fmt.Sprintf("Player%d", i), 100-i, 100, "astrology")
 		if err != nil {
 			t.Fatalf("saveScore() failed for player %d: %v", i, err)
 		}
@@ -340,10 +340,10 @@ func TestSaveScore_Persistence(t *testing.T) {
 
 	// Save some scores
 	testTime := time.Now()
-	if err := saveScore("Alice", 100, 100); err != nil {
+	if err := saveScore("Alice", 100, 100, "astrology"); err != nil {
 		t.Fatalf("saveScore() failed: %v", err)
 	}
-	if err := saveScore("Bob", 90, 100); err != nil {
+	if err := saveScore("Bob", 90, 100, "astrology"); err != nil {
 		t.Fatalf("saveScore() failed: %v", err)
 	}
 
@@ -403,7 +403,7 @@ func TestSaveScore_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			err := saveScore(fmt.Sprintf("Player%d", idx), idx*10, 100)
+			err := saveScore(fmt.Sprintf("Player%d", idx), idx*10, 100, "astrology")
 			if err != nil {
 				errorsChan <- err
 			}
